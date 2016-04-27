@@ -13,15 +13,19 @@ var Timer = function (cfg) {
     this.meetingIssueId = 6666;
     this.redmineBaseUrl = 'https://rm.innomdc.com/';
     this.storageName = 'rtt-data';
+    this.notifyable = false;
+    this.notification = null;
+    this.notificationInt = null;
+    this.notificationPeriod = 5 * 60 * 1000;
 
-    this.fixLayout();
+    this.isNotifyable(function () {
+        this.buildHTML();
+        this.buildStyles();
 
-    this.buildHTML();
-    this.buildStyles();
-
-    this.initStorage();
-    this.initEvents();
-    this.restoreState();
+        this.initStorage();
+        this.initEvents();
+        this.restoreState();
+    });
 };
 
 Timer.prototype = {
@@ -223,7 +227,7 @@ Timer.prototype = {
 
     getIssueIdFromUrl: function () {
         var m = window.location.href.match(/\/issues\/(\d+)/);
-        return m && m[1];
+        return m && +m[1];
     },
 
     getItemState: function (name) {
@@ -279,12 +283,20 @@ Timer.prototype = {
             ciState = this.getCurrentIssueState(),
             issueId = ciState.paused ? ciState.id : this.getIssueIdFromUrl();
 
+        if (issueId === this.meetingIssueId) {
+            if (!this.isMeetingIssueRunning()) {
+                this.onMeetingStartButtonClick();
+            }
+
+            issueId = 0;
+        }
+
         if (!issueId) {
             issueId = prompt('What number of issue will start?');
         }
 
         if (!issueId) {
-            return false;
+            return;
         }
 
         if (this.isMeetingIssueRunning()) {
@@ -398,7 +410,7 @@ Timer.prototype = {
         this.setViewVisible('meetingStatus', miRunning);
 
         if (miRunning) {
-            this.showMasks();
+            this.showNotification();
         }
 
         this.refreshTimer();
@@ -482,7 +494,7 @@ Timer.prototype = {
             self.setViewVisible('meetingStart', false);
             self.setViewVisible('meetingStatus', true);
 
-            self.showMasks();
+            self.showNotification();
 
             self.refreshTimer();
         });
@@ -502,7 +514,7 @@ Timer.prototype = {
             self.setViewVisible('meetingStart', true);
             self.setViewVisible('meetingStatus', false);
 
-            self.hideMasks();
+            self.hideNotification();
 
             if (typeof callback === 'function') {
                 callback();
@@ -621,6 +633,66 @@ Timer.prototype = {
 
         var footerEl = document.getElementById('footer');
         footerEl.style.position = 'relative';
+    },
+
+    isNotifyable: function (callback) {
+        if (!("Notification" in window)) {
+            return;
+        }
+
+        if (Notification.permission === "granted") {
+            this.notifyable = true;
+            callback.call(this);
+        } else if (Notification.permission !== 'denied') {
+            Notification.requestPermission(function (permission) {
+                this.notifyable = permission === "granted";
+                callback.call(this);
+            });
+        }
+    },
+
+    showNotification: function () {
+        if (!this.notifyable || this.notification || this.notificationInt) {
+            return;
+        }
+
+        var self = this;
+
+        this.notification = this.createNotification();
+
+        this.notificationInt = setInterval(function () {
+            if (self.notification) {
+                return;
+            }
+
+            self.notification = self.createNotification();
+        }, this.notificationPeriod);
+    },
+
+    hideNotification: function () {
+        if (this.notification) {
+            this.notification.close();
+            this.notification = null;
+        }
+
+        clearInterval(this.notificationInt);
+        this.notificationInt = null;
+    },
+
+    closeNotification: function () {
+        this.notification = null;
+    },
+
+    createNotification: function () {
+        var title = 'Meeting issue is running';
+        var options = {
+            body: 'Please be sure that your are on meeting now',
+            icon: window.rttBaseUrl + 'meeting.png'
+        };
+
+        var notification = new Notification(title, options);
+        notification.onclose = this.closeNotification.bind(this);
+        return notification;
     }
 
 };
@@ -635,7 +707,7 @@ var theme = {
 
 var oldTimer = document.querySelector('#account ul li:first-child');
 if (oldTimer) {
-    var timer = window.redmineTimeTracker = new Timer({
+    var timer = window.rttInstance = new Timer({
         oldTimer: oldTimer,
         theme:    theme
     });

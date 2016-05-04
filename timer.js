@@ -411,6 +411,8 @@ Timer.prototype = {
 
         if (miRunning) {
             this.showNotification();
+        } else {
+            this.hideNotification();
         }
 
         this.refreshTimer();
@@ -675,8 +677,10 @@ Timer.prototype = {
             this.notification = null;
         }
 
-        clearInterval(this.notificationInt);
-        this.notificationInt = null;
+        if (this.notificationInt) {
+            clearInterval(this.notificationInt);
+            this.notificationInt = null;
+        }
     },
 
     closeNotification: function () {
